@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nanocomposite Computational Analyzer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100">
+  <header class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 bg-slate-900 px-6 py-4">
+    <div><h1 class="text-xl font-bold text-cyan-400">Graphene &amp; CNT Nanocomposite Analyzer</h1><p class="text-xs text-slate-400">Micromechanics, thermal transport, percolation &amp; 3D chirality</p></div>
+    <div class="flex gap-3"><a class="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-cyan-300" href="/api/sample-csv">Download sample CSV</a><button class="rounded bg-cyan-700 px-3 py-2 text-xs font-semibold" onclick="exportCSV()">Export simulation CSV</button></div>
+  </header>
+  <div class="flex flex-col lg:flex-row">
+    <aside class="w-full shrink-0 space-y-5 border-r border-slate-800 bg-slate-900 p-5 lg:w-80">
+      <h2 class="text-sm font-semibold uppercase text-slate-400">Material &amp; filler parameters</h2>
+      <label class="block text-xs text-slate-300">Matrix material<select id="matrix" class="mt-1 w-full rounded border border-slate-700 bg-slate-800 p-2 text-sm"><option value="Epoxy">Epoxy Resin</option><option value="PEEK">PEEK Polymer</option><option value="PLA">PLA Polymer</option><option value="Al6061">Aluminium 6061</option></select></label>
+      <label class="block text-xs text-slate-300">Active volume fraction <output id="vf-label" class="text-cyan-300">2.0%</output><input id="vf" type="range" min="0" max="10" step="0.1" value="2" class="w-full accent-cyan-500"></label>
+      <label class="block text-xs text-slate-300">Graphene aspect ratio <output id="gnp-label" class="text-cyan-300">150</output><input id="alpha_gnp" type="range" min="10" max="500" step="10" value="150" class="w-full accent-cyan-500"></label>
+      <label class="block text-xs text-slate-300">CNT aspect ratio <output id="cnt-label" class="text-cyan-300">250</output><input id="alpha_cnt" type="range" min="10" max="1000" step="10" value="250" class="w-full accent-cyan-500"></label>
+      <label class="block text-xs text-slate-300">Filler orientation<select id="orientation" class="mt-1 w-full rounded border border-slate-700 bg-slate-800 p-2 text-sm"><option value="random">3D randomly oriented</option><option value="aligned">Unidirectionally aligned</option></select></label>
+      <label class="block text-xs text-slate-300">Interface efficiency <output id="eta-label" class="text-cyan-300">0.75</output><input id="eta_i" type="range" min="0.2" max="1" step="0.05" value="0.75" class="w-full accent-cyan-500"></label>
+      <section class="space-y-3 rounded border border-cyan-900 bg-slate-950 p-3">
+        <h2 class="text-xs font-bold uppercase text-cyan-400">Experimental data CSV</h2>
+        <p class="text-[11px] text-slate-300">Required columns: <code class="break-all text-amber-300">volume_fraction_pct,filler_type,exp_modulus_gpa,exp_thermal_wmk</code>. Filler type: Graphene or CNT.</p>
+        <input id="csv-file" type="file" accept=".csv,text/csv" class="w-full text-xs text-slate-300">
+        <button id="demo-button" class="w-full rounded border border-slate-700 bg-slate-800 py-2 text-xs">Reset to built-in demo data</button>
+        <p id="upload-status" class="text-[11px] text-emerald-400" role="status">Loading demo data...</p>
+      </section>
+    </aside>
+    <main class="min-w-0 flex-1 space-y-5 p-4 sm:p-6">
+      <nav class="flex flex-wrap gap-2 border-b border-slate-800 pb-3" aria-label="Dashboard sections">
+        <button class="tab rounded bg-cyan-700 px-3 py-2 text-xs" data-tab="simulation">Property simulation</button><button class="tab rounded bg-slate-800 px-3 py-2 text-xs" data-tab="structure">3D structure &amp; chirality</button><button class="tab rounded bg-slate-800 px-3 py-2 text-xs" data-tab="validation">Validation &amp; error metrics</button><button class="tab rounded bg-slate-800 px-3 py-2 text-xs" data-tab="equations">Equations &amp; input format</button>
+      </nav>
+      <section id="simulation" class="tab-panel space-y-5">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div class="rounded border border-slate-800 bg-slate-900 p-4"><p class="text-xs text-slate-400">Graphene modulus</p><strong id="kpi-gnp" class="text-2xl text-cyan-300">--</strong></div>
+          <div class="rounded border border-slate-800 bg-slate-900 p-4"><p class="text-xs text-slate-400">CNT modulus</p><strong id="kpi-cnt" class="text-2xl text-amber-300">--</strong></div>
+          <div class="rounded border border-slate-800 bg-slate-900 p-4"><p class="text-xs text-slate-400">Graphene thermal gain</p><strong id="kpi-thermal" class="text-2xl text-emerald-300">--</strong></div>
+          <div class="rounded border border-slate-800 bg-slate-900 p-4"><p class="text-xs text-slate-400">Electrical state</p><strong id="kpi-state" class="text-2xl text-violet-300">--</strong></div>
+        </div>
+        <div class="grid grid-cols-1 gap-4 xl:grid-cols-2"><div id="chart-modulus" class="h-80 rounded border border-slate-800 bg-slate-900"></div><div id="chart-thermal" class="h-80 rounded border border-slate-800 bg-slate-900"></div></div>
+        <div id="chart-electrical" class="h-80 rounded border border-slate-800 bg-slate-900"></div>
+      </section>
+      <section id="structure" class="tab-panel hidden space-y-4">
+        <div class="flex flex-wrap items-end gap-5 rounded border border-slate-800 bg-slate-900 p-4">
+          <label class="text-xs text-slate-400">Chiral index n<input id="chiral-n" type="number" min="4" max="16" value="8" class="mt-1 block w-20 rounded border border-slate-700 bg-slate-800 p-2 text-white"></label>
+          <label class="text-xs text-slate-400">Chiral index m<input id="chiral-m" type="number" min="0" max="16" value="8" class="mt-1 block w-20 rounded border border-slate-700 bg-slate-800 p-2 text-white"></label>
+          <p class="text-xs">CNT type <strong id="cnt-type" class="text-cyan-300">Armchair</strong></p><p class="text-xs">Diameter <strong id="cnt-diam">1.085 nm</strong></p><p class="text-xs">Angle <strong id="cnt-angle">30.0°</strong></p><p class="text-xs">Electrical <strong id="cnt-electrical" class="text-emerald-300">Metallic</strong></p>
+        </div>
+        <div id="three-container" class="relative h-[420px] overflow-hidden rounded border border-slate-800 bg-slate-900"><p class="absolute left-4 top-3 z-10 text-xs text-slate-400">Graphene sheet and rolled SWCNT lattice</p></div>
+      </section>
+      <section id="validation" class="tab-panel hidden space-y-4">
+        <p id="val-source" class="text-sm text-cyan-300">Dataset: loading...</p>
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-3"><div class="rounded border border-slate-800 bg-slate-900 p-4">R² <strong id="metric-r2" class="block text-2xl text-emerald-300">--</strong></div><div class="rounded border border-slate-800 bg-slate-900 p-4">RMSE <strong id="metric-rmse" class="block text-2xl text-amber-300">--</strong></div><div class="rounded border border-slate-800 bg-slate-900 p-4">MAPE <strong id="metric-mape" class="block text-2xl text-cyan-300">--</strong></div></div>
+        <div id="chart-validation" class="h-80 rounded border border-slate-800 bg-slate-900"></div>
+        <div class="overflow-x-auto rounded border border-slate-800"><table class="w-full text-left text-xs"><thead class="bg-slate-800"><tr><th class="p-3">Vf (%)</th><th class="p-3">Filler</th><th class="p-3">Measured (GPa)</th><th class="p-3">Predicted (GPa)</th><th class="p-3">Absolute error</th></tr></thead><tbody id="validation-rows" class="divide-y divide-slate-800"></tbody></table></div>
+      </section>
+      <section id="equations" class="tab-panel hidden space-y-4 rounded border border-slate-800 bg-slate-900 p-5 text-sm leading-7">
+        <h2 class="font-bold text-cyan-300">Governing computational models</h2>
+        <p>Halpin–Tsai: $$E_L = E_m \frac{1 + \xi \eta_L V_f}{1 - \eta_L V_f}, \quad \eta_L = \frac{(E_{f,\mathrm{eff}}/E_m)-1}{(E_{f,\mathrm{eff}}/E_m)+\xi}$$</p>
+        <p>Kapitza resistance: $$k_{f,\mathrm{eff}} = \frac{k_f}{1 + 2 R_K k_f/L}, \quad k_{\mathrm{eff}} = k_m \frac{1 + p V_f (k_{f,\mathrm{eff}}-k_m)/k_m}{1 - V_f}$$</p>
+        <p>Electrical percolation: $$\sigma_{\mathrm{eff}} = \sigma_m + \sigma_f \eta_i (V_f - \phi_c)^t, \quad V_f > \phi_c$$</p>
+        <h2 class="pt-3 font-bold text-amber-300">CSV format</h2><pre class="overflow-x-auto rounded bg-slate-950 p-3 text-xs text-emerald-300">volume_fraction_pct,filler_type,exp_modulus_gpa,exp_thermal_wmk
+0.5,Graphene,3.85,0.34
+1.0,Graphene,4.45,0.52
+2.0,CNT,6.10,0.72
+5.0,CNT,10.15,1.58</pre>
+      </section>
+      <p id="app-status" class="sr-only" role="status" aria-live="polite"></p>
+    </main>
+  </div>
+  <script>
+    let simulation = null;
+    let experimentalRows = [];
+    let datasetName = "Built-in Demo Dataset";
+    let scene, camera, renderer, latticeGroup;
+    const $ = selector => document.querySelector(selector);
+    const palette = { paper: "#0f172a", grid: "#1e293b", text: "#94a3b8", cyan: "#22d3ee", amber: "#fbbf24" };
+
+    function syncLabels() {
+      $("#vf-label").value = `${Number($("#vf").value).toFixed(1)}%`;
+      $("#gnp-label").value = $("#alpha_gnp").value;
+      $("#cnt-label").value = $("#alpha_cnt").value;
+      $("#eta-label").value = Number($("#eta_i").value).toFixed(2);
+    }
+    function chartLayout(title, yTitle) {
+      return { title: { text: title, font: { color: "#e2e8f0", size: 14 } }, paper_bgcolor: palette.paper, plot_bgcolor: palette.paper, font: { color: palette.text, size: 11 }, margin: { t: 42, r: 18, b: 48, l: 58 }, xaxis: { title: "Volume fraction (%)", gridcolor: palette.grid }, yaxis: { title: yTitle, gridcolor: palette.grid }, legend: { orientation: "h", y: -0.25 } };
+    }
+    function expByType(type) { return experimentalRows.filter(row => row.filler_type.toLowerCase() === type); }
+    function plotSimulation() {
+      if (!simulation || !window.Plotly) return;
+      const options = { responsive: true, displaylogo: false };
+      const graphene = expByType("graphene"), cnt = expByType("cnt");
+      Plotly.react("chart-modulus", [
+        { x: simulation.vf_pct, y: simulation.E_gnp, name: "Graphene model", line: { color: palette.cyan, width: 2.5 } },
+        { x: simulation.vf_pct, y: simulation.E_cnt, name: "CNT model", line: { color: palette.amber, width: 2.5 } },
+        { x: graphene.map(row => row.volume_fraction_pct), y: graphene.map(row => row.exp_modulus_gpa), name: "Graphene data", mode: "markers", marker: { color: palette.cyan, symbol: "diamond" } },
+        { x: cnt.map(row => row.volume_fraction_pct), y: cnt.map(row => row.exp_modulus_gpa), name: "CNT data", mode: "markers", marker: { color: palette.amber } }
+      ], chartLayout("Effective Young's modulus", "Modulus (GPa)"), options);
+      Plotly.react("chart-thermal", [
+        { x: simulation.vf_pct, y: simulation.k_gnp, name: "Graphene model", line: { color: "#34d399", width: 2.5 } },
+        { x: simulation.vf_pct, y: simulation.k_cnt, name: "CNT model", line: { color: "#f472b6", width: 2.5 } },
+        { x: graphene.map(row => row.volume_fraction_pct), y: graphene.map(row => row.exp_thermal_wmk), name: "Graphene data", mode: "markers", marker: { color: "#34d399", symbol: "diamond" } },
+        { x: cnt.map(row => row.volume_fraction_pct), y: cnt.map(row => row.exp_thermal_wmk), name: "CNT data", mode: "markers", marker: { color: "#f472b6" } }
+      ], chartLayout("Effective thermal conductivity", "k (W/m·K)"), options);
+      const electrical = chartLayout("Electrical conductivity and percolation thresholds", "log10(σ) [S/m]");
+      electrical.shapes = [simulation.phi_c_cnt_pct, simulation.phi_c_gnp_pct].map((threshold, index) => ({ type: "line", x0: threshold, x1: threshold, y0: 0, y1: 1, yref: "paper", line: { color: index ? palette.cyan : palette.amber, dash: "dot" } }));
+      Plotly.react("chart-electrical", [
+        { x: simulation.vf_pct, y: simulation.log_sigma_gnp, name: `Graphene (φc ${simulation.phi_c_gnp_pct}%)`, line: { color: palette.cyan } },
+        { x: simulation.vf_pct, y: simulation.log_sigma_cnt, name: `CNT (φc ${simulation.phi_c_cnt_pct}%)`, line: { color: palette.amber } }
+      ], electrical, options);
+    }
+    async function runSimulation() {
+      const payload = Object.fromEntries(["matrix", "orientation", "vf", "alpha_gnp", "alpha_cnt", "eta_i"].map(key => [key, $("#" + key).value]));
+      for (const key of ["vf", "alpha_gnp", "alpha_cnt", "eta_i"]) payload[key === "vf" ? "vf_pct" : key] = Number(payload[key]);
+      delete payload.vf;
+      try {
+        const response = await fetch("/api/simulate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Simulation failed.");
+        simulation = data;
+        $("#kpi-gnp").textContent = `${data.kpi.E_gnp.toFixed(2)} GPa`;
+        $("#kpi-cnt").textContent = `${data.kpi.E_cnt.toFixed(2)} GPa`;
+        $("#kpi-thermal").textContent = `${data.kpi.thermal_gain_pct.toFixed(1)}%`;
+        $("#kpi-state").textContent = data.kpi.percolation_status;
+        plotSimulation(); renderValidation();
+      } catch (error) { $("#app-status").textContent = `Simulation error: ${error.message}`; }
+    }
+    async function loadDemoData() {
+      try {
+        const response = await fetch("/api/demo-data"), data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not load demo data.");
+        experimentalRows = data.rows; datasetName = data.source;
+        $("#upload-status").textContent = `Active: ${datasetName}`;
+        $("#val-source").textContent = `Dataset: ${datasetName}`;
+        $("#upload-status").className = "text-[11px] text-emerald-400";
+        plotSimulation(); renderValidation();
+      } catch (error) { showUploadError(error.message); }
+    }
+    function showUploadError(message) { $("#upload-status").textContent = `Error: ${message}`; $("#upload-status").className = "text-[11px] text-rose-400"; }
+    async function uploadCSV() {
+      const file = $("#csv-file").files[0]; if (!file) return;
+      const formData = new FormData(); formData.append("file", file);
+      try {
+        const response = await fetch("/api/upload-csv", { method: "POST", body: formData }), data = await response.json();
+        if (!response.ok) throw new Error(data.error || "CSV upload failed.");
+        experimentalRows = data.rows; datasetName = `${data.source} (${data.rows.length} rows)`;
+        $("#upload-status").textContent = `Loaded: ${datasetName}`; $("#upload-status").className = "text-[11px] text-emerald-400";
+        $("#val-source").textContent = `Dataset: ${datasetName}`; plotSimulation(); renderValidation();
+      } catch (error) { showUploadError(error.message); }
+    }
+    function renderValidation() {
+      if (!simulation || !experimentalRows.length || !window.Plotly) return;
+      const body = $("#validation-rows"); body.replaceChildren();
+      const actual = [], predicted = [], errors = [];
+      for (const row of experimentalRows) {
+        const index = Math.max(0, Math.min(100, Math.round(Number(row.volume_fraction_pct) * 10)));
+        const observed = Number(row.exp_modulus_gpa), model = row.filler_type.toLowerCase() === "graphene" ? simulation.E_gnp[index] : simulation.E_cnt[index];
+        const error = observed === 0 ? 0 : Math.abs((observed - model) / observed) * 100;
+        actual.push(observed); predicted.push(model); errors.push(error);
+        const tr = document.createElement("tr");
+        [`${row.volume_fraction_pct}%`, row.filler_type, observed.toFixed(2), model.toFixed(2), `${error.toFixed(1)}%`].forEach(value => { const td = document.createElement("td"); td.className = "p-3"; td.textContent = value; tr.append(td); });
+        body.append(tr);
+      }
+      const mean = actual.reduce((sum, value) => sum + value, 0) / actual.length;
+      const residual = actual.reduce((sum, value, index) => sum + (value - predicted[index]) ** 2, 0);
+      const total = actual.reduce((sum, value) => sum + (value - mean) ** 2, 0);
+      $("#metric-r2").textContent = (total ? 1 - residual / total : 1).toFixed(3);
+      $("#metric-rmse").textContent = `${Math.sqrt(residual / actual.length).toFixed(2)} GPa`;
+      $("#metric-mape").textContent = `${(errors.reduce((sum, value) => sum + value, 0) / errors.length).toFixed(1)}%`;
+      const low = Math.min(...actual, ...predicted), high = Math.max(...actual, ...predicted);
+      Plotly.react("chart-validation", [{ x: actual, y: predicted, mode: "markers", name: "Data points", marker: { color: palette.cyan, size: 9 } }, { x: [low, high], y: [low, high], mode: "lines", name: "Ideal fit", line: { dash: "dash", color: palette.text } }], { ...chartLayout("Experimental vs. predicted modulus", "Predicted (GPa)"), xaxis: { title: "Measured (GPa)", gridcolor: palette.grid } }, { responsive: true, displaylogo: false });
+    }
+    function exportCSV() {
+      if (!simulation) return;
+      const lines = ["volume_fraction_pct,E_graphene_gpa,E_cnt_gpa,k_graphene_wmk,k_cnt_wmk,log10_sigma_graphene,log10_sigma_cnt"];
+      for (let i = 0; i < simulation.vf_pct.length; i++) lines.push([simulation.vf_pct[i], simulation.E_gnp[i], simulation.E_cnt[i], simulation.k_gnp[i], simulation.k_cnt[i], simulation.log_sigma_gnp[i], simulation.log_sigma_cnt[i]].join(","));
+      const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" })), link = document.createElement("a");
+      link.href = url; link.download = "simulation_results.csv"; link.click(); URL.revokeObjectURL(url);
+    }
+    function update3D() {
+      if (!window.THREE) return;
+      const nInput = $("#chiral-n"), mInput = $("#chiral-m");
+      const n = Math.min(16, Math.max(4, Number.parseInt(nInput.value, 10) || 8)), m = Math.min(n, Math.max(0, Number.parseInt(mInput.value, 10) || 0));
+      nInput.value = n; mInput.value = m;
+      const diameter = 0.246 * Math.sqrt(n*n + n*m + m*m) / Math.PI, angle = Math.atan(Math.sqrt(3)*m/(2*n+m)) * 180/Math.PI;
+      $("#cnt-type").textContent = m === 0 ? "Zigzag" : m === n ? "Armchair" : "Chiral";
+      $("#cnt-diam").textContent = `${diameter.toFixed(3)} nm`; $("#cnt-angle").textContent = `${angle.toFixed(1)}°`;
+      const metallic = (n - m) % 3 === 0, electronic = $("#cnt-electrical"); electronic.textContent = metallic ? "Metallic" : "Semiconducting"; electronic.className = metallic ? "text-emerald-300" : "text-amber-300";
+      const container = $("#three-container");
+      if (!renderer) {
+        scene = new THREE.Scene(); camera = new THREE.PerspectiveCamera(45, container.clientWidth/container.clientHeight, 0.1, 100); camera.position.set(0, 2.5, Math.max(11, 14 / (container.clientWidth / container.clientHeight)));
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2)); renderer.setSize(container.clientWidth, container.clientHeight); container.append(renderer.domElement);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.9)); latticeGroup = new THREE.Group(); scene.add(latticeGroup);
+        (function animate(){ requestAnimationFrame(animate); latticeGroup.rotation.y += 0.006; renderer.render(scene, camera); })();
+      }
+      latticeGroup.clear(); const geometry = new THREE.SphereGeometry(0.08, 10, 10), graphene = new THREE.MeshBasicMaterial({ color: 0x22d3ee }), tube = new THREE.MeshBasicMaterial({ color: 0xfbbf24 });
+      for (let i=-4;i<=4;i++) for (let j=-4;j<=4;j++){ const atom=new THREE.Mesh(geometry,graphene); atom.position.set(i*0.42-3.2,j*0.28*Math.sqrt(3)+(Math.abs(i)%2?0.24:0),0); latticeGroup.add(atom); }
+      const radius=Math.max(0.7,diameter*1.15), rings=14, count=Math.max(8,n+m);
+      for(let r=0;r<rings;r++) for(let k=0;k<count;k++){ const theta=k/count*Math.PI*2+angle*Math.PI/180*r*0.25, atom=new THREE.Mesh(geometry,tube); atom.position.set(3.2+radius*Math.cos(theta),(r-rings/2)*0.35,radius*Math.sin(theta)); latticeGroup.add(atom); }
+    }
+    function switchTab(id) {
+      document.querySelectorAll(".tab-panel").forEach(panel=>panel.classList.add("hidden")); $("#"+id).classList.remove("hidden");
+      document.querySelectorAll(".tab").forEach(button=>button.className="tab rounded bg-slate-800 px-3 py-2 text-xs");
+      document.querySelector(`[data-tab="${id}"]`).className="tab rounded bg-cyan-700 px-3 py-2 text-xs";
+      if(id==="structure") setTimeout(update3D,50); if(id==="validation") renderValidation(); if(id==="simulation") setTimeout(resizePlots,50);
+    }
+    function resizePlots() { if(window.Plotly) ["chart-modulus","chart-thermal","chart-electrical","chart-validation"].forEach(id=>{const el=$("#"+id); if(el.data) Plotly.Plots.resize(el);}); }
+    let resizeTimer;
+    window.addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{resizePlots();if(renderer){const el=$("#three-container");camera.aspect=el.clientWidth/el.clientHeight;camera.position.z=Math.max(11,14/camera.aspect);camera.updateProjectionMatrix();renderer.setSize(el.clientWidth,el.clientHeight);}},120);});
+    ["vf","alpha_gnp","alpha_cnt","eta_i"].forEach(id=>$("#"+id).addEventListener("input",()=>{syncLabels();runSimulation();}));
+    ["matrix","orientation"].forEach(id=>$("#"+id).addEventListener("change",runSimulation));
+    document.querySelectorAll(".tab").forEach(button=>button.addEventListener("click",()=>switchTab(button.dataset.tab)));
+    $("#chiral-n").addEventListener("change",update3D); $("#chiral-m").addEventListener("change",update3D);
+    $("#csv-file").addEventListener("change",uploadCSV); $("#demo-button").addEventListener("click",loadDemoData);
+    syncLabels(); loadDemoData().then(runSimulation);
+  </script>
+</body>
+</html>
